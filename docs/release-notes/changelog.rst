@@ -6,6 +6,17 @@
 .. changelog:: 3.0.0
     :date: 2364-01-27
 
+    .. change:: Emit ``anyOf`` instead of ``oneOf`` for union fields
+        :type: bugfix
+        :pr:
+        :issue: 5131
+
+        Unions (including optional fields such as ``X | None``) were rendered as
+        JSON Schema ``oneOf``. JSON Schema ``oneOf`` allows *exactly one* matching
+        branch, whereas a Python union allows *at least one*. For overlapping branches
+        such as ``StrEnum | str`` every enum value also matches ``str``, so a strict
+        validator rejected valid enum values. Unions are now rendered as ``anyOf``.
+
     .. change:: Remove support for implicitly declared request parameters
         :type: feature
         :breaking:

@@ -507,14 +507,14 @@ def test_schema_generation_with_generic_classes_constrained() -> None:
     assert properties
     assert properties["bound"] == Schema(type=OpenAPIType.INTEGER)
     assert properties["constrained"] == Schema(
-        one_of=[Schema(type=OpenAPIType.INTEGER), Schema(type=OpenAPIType.STRING)]
+        any_of=[Schema(type=OpenAPIType.INTEGER), Schema(type=OpenAPIType.STRING)]
     )
-    assert properties["union"] == Schema(one_of=[Schema(type=OpenAPIType.OBJECT), Schema(type=OpenAPIType.BOOLEAN)])
+    assert properties["union"] == Schema(any_of=[Schema(type=OpenAPIType.OBJECT), Schema(type=OpenAPIType.BOOLEAN)])
     assert properties["union_constrained"] == Schema(
-        one_of=[Schema(type=OpenAPIType.INTEGER), Schema(type=OpenAPIType.STRING), Schema(type=OpenAPIType.BOOLEAN)]
+        any_of=[Schema(type=OpenAPIType.INTEGER), Schema(type=OpenAPIType.STRING), Schema(type=OpenAPIType.BOOLEAN)]
     )
     assert properties["union_bound"] == Schema(
-        one_of=[Schema(type=OpenAPIType.INTEGER), Schema(type=OpenAPIType.BOOLEAN)]
+        any_of=[Schema(type=OpenAPIType.INTEGER), Schema(type=OpenAPIType.BOOLEAN)]
     )
 
 
@@ -548,8 +548,65 @@ def test_schema_tuple_with_union() -> None:
     schema = get_schema_for_field_definition(FieldDefinition.from_annotation(tuple[int, Union[int, str]]))
     assert schema.prefix_items == [
         Schema(type=OpenAPIType.INTEGER),
-        Schema(one_of=[Schema(type=OpenAPIType.INTEGER), Schema(type=OpenAPIType.STRING)]),
+        Schema(any_of=[Schema(type=OpenAPIType.INTEGER), Schema(type=OpenAPIType.STRING)]),
     ]
+
+
+class _StatusCode(StrEnum):
+    RUNNING = "running"
+    DONE = "done"
+
+
+@dataclass
+class _Payload:
+    status: _StatusCode | str
+    maybe: list[str] | None
+
+
+def test_union_renders_any_of_and_validates_overlapping_branches() -> None:
+    """A Python union is ``anyOf`` (at least one branch), not ``oneOf`` (exactly one).
+
+    For overlapping branches such as ``StrEnum | str`` *every* enum value also matches the
+    ``str`` branch, so a strict ``oneOf`` validator rejects valid enum values.
+    """
+    properties = get_schema_for_field_definition(
+        FieldDefinition.from_annotation(_Payload),
+    ).properties
+    assert properties
+
+    status = properties["status"]
+    assert status.one_of is None
+    assert isinstance(status.any_of, list)
+    assert len(status.any_of) == 2
+
+    # Optional fields keep ``null`` inside the ``anyOf``.
+    maybe = properties["maybe"]
+    assert maybe.one_of is None
+    assert isinstance(maybe.any_of, list)
+    assert Schema(type=OpenAPIType.NULL) in maybe.any_of
+
+
+def test_union_overlapping_branches_pass_strict_validation() -> None:
+    """``StrEnum | str`` must validate both enum values and plain strings under a strict validator."""
+    jsonschema = pytest.importorskip("jsonschema")
+    from litestar.testing import create_test_client
+
+    @post("/run")
+    async def handler(data: _StatusCode | str) -> _StatusCode | str:
+        return data
+
+    with create_test_client(handler) as client:
+        doc = client.app.openapi_schema.to_schema()
+
+    # The request body schema is the union itself: {"anyOf": [{$ref: StatusCode}, {type: "string"}]}.
+    # Inline the $ref so the document is self-contained for validation.
+    body = doc["paths"]["/run"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+    ref = body["anyOf"][0]["$ref"]
+    body["anyOf"][0] = doc["components"]["schemas"][ref.split("/")[-1]]
+
+    validator = jsonschema.Draft202012Validator(body)
+    assert validator.is_valid("running")  # enum value
+    assert validator.is_valid("anything-else")  # plain string
 
 
 def test_schema_tuple() -> None:
@@ -563,7 +620,7 @@ def test_schema_tuple() -> None:
 def test_schema_optional_tuple() -> None:
     schema = get_schema_for_field_definition(FieldDefinition.from_annotation(Optional[tuple[int, str]]))
     assert schema == Schema(
-        one_of=[
+        any_of=[
             Schema(
                 prefix_items=[Schema(type=OpenAPIType.INTEGER), Schema(type=OpenAPIType.STRING)],
                 type=OpenAPIType.ARRAY,
@@ -582,12 +639,12 @@ def test_optional_enum() -> None:
     schema = creator.for_field_definition(FieldDefinition.from_annotation(Optional[Foo]))
     assert isinstance(schema, Schema)
     assert schema.type is None
-    assert schema.one_of is not None
-    null_schema = schema.one_of[1]
+    assert schema.any_of is not None
+    null_schema = schema.any_of[1]
     assert isinstance(null_schema, Schema)
     assert null_schema.type is not None
     assert null_schema.type is OpenAPIType.NULL
-    enum_ref = schema.one_of[0]
+    enum_ref = schema.any_of[0]
     assert isinstance(enum_ref, Reference)
     assert enum_ref.ref == "#/components/schemas/tests_unit_test_openapi_test_schema_test_optional_enum.Foo"
     enum_schema = creator.schema_registry.from_reference(enum_ref).schema
@@ -607,9 +664,9 @@ def test_optional_str_specified_enum() -> None:
     schema = creator.for_field_definition(FieldDefinition.from_annotation(Optional[StringEnum]))
     assert isinstance(schema, Schema)
     assert schema.type is None
-    assert schema.one_of is not None
+    assert schema.any_of is not None
 
-    enum_ref = schema.one_of[0]
+    enum_ref = schema.any_of[0]
     assert isinstance(enum_ref, Reference)
     assert (
         enum_ref.ref
@@ -622,7 +679,7 @@ def test_optional_str_specified_enum() -> None:
     assert enum_schema.enum[0] == "a"
     assert enum_schema.enum[1] == "b"
 
-    null_schema = schema.one_of[1]
+    null_schema = schema.any_of[1]
     assert isinstance(null_schema, Schema)
     assert null_schema.type is not None
     assert null_schema.type is OpenAPIType.NULL
@@ -637,9 +694,9 @@ def test_optional_int_specified_enum() -> None:
     schema = creator.for_field_definition(FieldDefinition.from_annotation(Optional[IntEnum]))
     assert isinstance(schema, Schema)
     assert schema.type is None
-    assert schema.one_of is not None
+    assert schema.any_of is not None
 
-    enum_ref = schema.one_of[0]
+    enum_ref = schema.any_of[0]
     assert isinstance(enum_ref, Reference)
     assert (
         enum_ref.ref
@@ -652,7 +709,7 @@ def test_optional_int_specified_enum() -> None:
     assert enum_schema.enum[0] == 1
     assert enum_schema.enum[1] == 2
 
-    null_schema = schema.one_of[1]
+    null_schema = schema.any_of[1]
     assert isinstance(null_schema, Schema)
     assert null_schema.type is not None
     assert null_schema.type is OpenAPIType.NULL
@@ -719,7 +776,7 @@ def test_type_union(base_type: type) -> None:
     schema = get_schema_for_field_definition(
         FieldDefinition.from_kwarg(name="Lookup", annotation=Union[ModelA, ModelB])
     )
-    assert schema.one_of == [
+    assert schema.any_of == [
         Reference(ref="#/components/schemas/tests_unit_test_openapi_test_schema_test_type_union.ModelA"),
         Reference(ref="#/components/schemas/tests_unit_test_openapi_test_schema_test_type_union.ModelB"),
     ]
@@ -749,7 +806,7 @@ def test_type_union_with_none(base_type: type) -> None:
     schema = get_schema_for_field_definition(
         FieldDefinition.from_kwarg(name="Lookup", annotation=Union[ModelA, ModelB, None])
     )
-    assert schema.one_of == [
+    assert schema.any_of == [
         Reference(ref="#/components/schemas/tests_unit_test_openapi_test_schema_test_type_union_with_none.ModelA"),
         Reference("#/components/schemas/tests_unit_test_openapi_test_schema_test_type_union_with_none.ModelB"),
         Schema(type=OpenAPIType.NULL),
@@ -935,7 +992,7 @@ def test_optional_upload_file_model_field_keeps_binary_format() -> None:
     assert file_schema.format == OpenAPIFormat.BINARY
 
 
-def test_optional_reference_field_keeps_one_of() -> None:
+def test_optional_reference_field_uses_any_of() -> None:
     @dataclass
     class Model:
         person: DataclassPerson | None
@@ -944,14 +1001,14 @@ def test_optional_reference_field_keeps_one_of() -> None:
     assert properties is not None
     person = properties["person"]
     assert isinstance(person, Schema)
-    one_of = person.one_of
+    any_of = person.any_of
 
-    assert one_of is not None
-    assert isinstance(one_of[0], Reference)
-    assert Schema(type=OpenAPIType.NULL) in one_of
+    assert any_of is not None
+    assert isinstance(any_of[0], Reference)
+    assert Schema(type=OpenAPIType.NULL) in any_of
 
 
-def test_optional_union_keeps_one_of() -> None:
+def test_optional_union_uses_any_of() -> None:
     @dataclass
     class Model:
         value: str | int | None
@@ -960,20 +1017,20 @@ def test_optional_union_keeps_one_of() -> None:
     assert properties is not None
     value = properties["value"]
     assert isinstance(value, Schema)
-    one_of = value.one_of
+    any_of = value.any_of
 
-    assert one_of is not None
-    assert Schema(type=OpenAPIType.NULL) in one_of
+    assert any_of is not None
+    assert Schema(type=OpenAPIType.NULL) in any_of
 
 
-def test_optional_enum_keeps_one_of() -> None:
+def test_optional_enum_uses_any_of() -> None:
     class Color(Enum):
         RED = "red"
 
     schema = get_schema_for_field_definition(FieldDefinition.from_annotation(Optional[Color]))
 
-    assert schema.one_of is not None
-    assert Schema(type=OpenAPIType.NULL) in schema.one_of
+    assert schema.any_of is not None
+    assert Schema(type=OpenAPIType.NULL) in schema.any_of
 
 
 @pytest.mark.parametrize(
@@ -1134,7 +1191,7 @@ def test_union_of_enums() -> None:
     schema = creator.for_field_definition(FieldDefinition.from_annotation(Union[Color, Size]))
 
     assert isinstance(schema, Schema)
-    assert schema.one_of is not None
-    assert len(schema.one_of) == 2
+    assert schema.any_of is not None
+    assert len(schema.any_of) == 2
     components = creator.schema_registry.generate_components_schemas()
     assert {tuple(v.enum or ()) for v in components.values()} == {("red",), ("small",)}

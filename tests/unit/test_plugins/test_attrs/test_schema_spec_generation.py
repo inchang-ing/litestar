@@ -38,7 +38,7 @@ def test_spec_generation() -> None:
                     },
                 },
                 "pets": {
-                    "oneOf": [
+                    "anyOf": [
                         {
                             "items": {"$ref": "#/components/schemas/DataclassPet"},
                             "type": "array",

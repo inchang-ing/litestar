@@ -165,7 +165,7 @@ def test_root_model_schema_generation() -> None:
         schema_creator=schema_creator,
     )
 
-    # Should generate a oneOf schema with the correct subschemas
+    # Should generate an anyOf schema with the correct subschemas
     assert isinstance(pet_schema, Schema)
     assert pet_schema.type == OpenAPIType.OBJECT
     assert isinstance(pet_schema.properties, dict)
@@ -175,27 +175,27 @@ def test_root_model_schema_generation() -> None:
     assert isinstance(pets, Schema)
     assert pets.type == OpenAPIType.ARRAY
     assert isinstance(pets.items, Schema)
-    assert isinstance(pets.items.one_of, list)
-    assert len(pets.items.one_of) == 3
+    assert isinstance(pets.items.any_of, list)
+    assert len(pets.items.any_of) == 3
 
-    assert isinstance(pets.items.one_of[0], Reference)
-    cat_schema = schema_creator.schema_registry.from_reference(pets.items.one_of[0]).schema
+    assert isinstance(pets.items.any_of[0], Reference)
+    cat_schema = schema_creator.schema_registry.from_reference(pets.items.any_of[0]).schema
     assert cat_schema.title == "Cat"
     assert cat_schema.properties is not None
     assert cat_schema.properties["name"] == Schema(type=OpenAPIType.STRING)
     assert cat_schema.properties["pet_type"] == Schema(type=OpenAPIType.STRING, const="cat")
     assert cat_schema.properties["meows"] == Schema(type=OpenAPIType.INTEGER)
 
-    assert isinstance(pets.items.one_of[1], Reference)
-    dog_schema = schema_creator.schema_registry.from_reference(pets.items.one_of[1]).schema
+    assert isinstance(pets.items.any_of[1], Reference)
+    dog_schema = schema_creator.schema_registry.from_reference(pets.items.any_of[1]).schema
     assert dog_schema.title == "Dog"
     assert dog_schema.properties is not None
     assert dog_schema.properties["name"] == Schema(type=OpenAPIType.STRING)
     assert dog_schema.properties["pet_type"] == Schema(type=OpenAPIType.STRING, const="dog")
     assert dog_schema.properties["barks"] == Schema(type=OpenAPIType.NUMBER)
 
-    assert isinstance(pets.items.one_of[2], Reference)
-    lizard_schema = schema_creator.schema_registry.from_reference(pets.items.one_of[2]).schema
+    assert isinstance(pets.items.any_of[2], Reference)
+    lizard_schema = schema_creator.schema_registry.from_reference(pets.items.any_of[2]).schema
     assert lizard_schema.title == "Lizard"
     assert lizard_schema.properties is not None
     assert lizard_schema.properties["name"] == Schema(type=OpenAPIType.STRING)

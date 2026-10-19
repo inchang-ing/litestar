@@ -36,7 +36,7 @@ def test_spec_generation(cls: Any) -> None:
                     },
                 },
                 "pets": {
-                    "oneOf": [
+                    "anyOf": [
                         {
                             "items": {"$ref": "#/components/schemas/DataclassPet"},
                             "type": "array",
@@ -142,8 +142,8 @@ def test_recursive_schema_generation(create_module: Callable[[str], ModuleType])
             "properties": {
                 "a": {"$ref": "#/components/schemas/A"},
                 "b": {"$ref": "#/components/schemas/B"},
-                "opt_a": {"oneOf": [{"$ref": "#/components/schemas/A"}, {"type": "null"}]},
-                "opt_b": {"oneOf": [{"$ref": "#/components/schemas/B"}, {"type": "null"}]},
+                "opt_a": {"anyOf": [{"$ref": "#/components/schemas/A"}, {"type": "null"}]},
+                "opt_b": {"anyOf": [{"$ref": "#/components/schemas/B"}, {"type": "null"}]},
                 "list_a": {"items": {"$ref": "#/components/schemas/A"}, "type": "array"},
                 "list_b": {"items": {"$ref": "#/components/schemas/B"}, "type": "array"},
             },
@@ -155,8 +155,8 @@ def test_recursive_schema_generation(create_module: Callable[[str], ModuleType])
             "properties": {
                 "a": {"$ref": "#/components/schemas/A"},
                 "b": {"$ref": "#/components/schemas/B"},
-                "opt_a": {"oneOf": [{"$ref": "#/components/schemas/A"}, {"type": "null"}]},
-                "opt_b": {"oneOf": [{"$ref": "#/components/schemas/B"}, {"type": "null"}]},
+                "opt_a": {"anyOf": [{"$ref": "#/components/schemas/A"}, {"type": "null"}]},
+                "opt_b": {"anyOf": [{"$ref": "#/components/schemas/B"}, {"type": "null"}]},
                 "list_a": {"items": {"$ref": "#/components/schemas/A"}, "type": "array"},
                 "list_b": {"items": {"$ref": "#/components/schemas/B"}, "type": "array"},
             },
